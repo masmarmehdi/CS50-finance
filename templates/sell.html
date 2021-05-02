@@ -1,16 +1,16 @@
 {% extends "layout.html" %}
 
 {% block title %}
-    Buy
+    Sell
 {% endblock %}
 
 {% block main %}
     <form action="/sell" method="post">
         <div class="form-group">
-            <select name="sell">
-                <option disabled selected>Select Symbol</option>
-                {% for data in holding %}
-                    <option value= " {{ data['symbol'] }} ">{{ data["symbol"] }}</option>
+            <select class="form-control" name="symbol">
+                <option disabled selected value="">Select Symbol</option>
+                {% for symbol in symbols %}
+                    <option value= "{{ symbol }}">{{ symbol }}</option>
                 {% endfor %}
             </select>
         </div>

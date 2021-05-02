@@ -78,16 +78,20 @@ def index():
 def buy():
     """Buy shares of stock"""
     if request.method == "POST":
-        quote = lookup(request.form.get("symbol"))
-        symbol = request.form.get("symbol")
-        # name = quote['name']
+        quote = lookup(request.form.get("symbol"))   
+        symbol = request.form.get("symbol").upper()
+        if not symbol:
+            return apology("Missing symbol")
+        if quote is None:
+            return apology("Invalid symbol")
         shares = request.form.get("shares")
         row = db.execute("SELECT cash FROM users WHERE id=:id",id=session["user_id"])
         budget = row[0]["cash"]
         price = quote['price']
-        total = float(shares) *  price
+        total = int(shares) *  price
         currentTotal =  budget - total
-        # db.execute("INSERT INTO purchases (Symbol, Name, Shares, Price, TOTAL) VALUES(?, ?, ?, ?, ?)", symbol, name, shares, price, total)
+        if currentTotal < 0:
+            return apology("Can't afford it.")
         db.execute("UPDATE users SET cash=:currentTotal WHERE id=:id",currentTotal=currentTotal,id=session["user_id"])
         db.execute("INSERT INTO purchases(user_id,symbol,shares,price) VALUES(:user_id, :symbol, :shares, :price)",user_id=session["user_id"],symbol=symbol,shares=shares,price=price)
         flash("Bought successfully!")
@@ -207,33 +211,35 @@ def register():
 @login_required
 def sell():
     """Sell shares of stock"""
-    holding = []
+    if request.method == "POST":
+        symbol = request.form.get("symbol")
+        quote = lookup(symbol)
+        if not symbol:
+            return apology("Missing symbol")
+        if quote is None:
+            return apology("Invalid symbol")
+        price = quote['price']
+        shares = request.form.get("shares")
+        rows = db.execute("SELECT symbol, SUM(shares) AS total_shares FROM purchases WHERE user_id= :user_id GROUP BY symbol HAVING total_shares > 0;", user_id=session['user_id'])
+        for row in rows:
+            if row['symbol'] == symbol:
+                if int(shares) > row['total_shares']:
+                    return apology("Not enough shares")
+        rows = db.execute("SELECT cash FROM users WHERE id=:id",id=session["user_id"])
+        budget = rows[0]["cash"]
+        total = int(shares) *  price
+        currentTotal =  budget + total
+        db.execute("UPDATE users SET cash=:currentTotal WHERE id=:id",currentTotal=currentTotal,id=session["user_id"])
+        db.execute("INSERT INTO purchases(user_id,symbol,shares,price) VALUES(:user_id, :symbol, :shares, :price)",user_id=session["user_id"],symbol=symbol,shares= -1*int(shares),price=price)
+        flash("sold successfully!")
+        return redirect("/")
     rows = db.execute("""
             SELECT symbol FROM purchases
             WHERE user_id= :user_id
             group by symbol
+            having sum(shares) > 0;
         """,user_id=session["user_id"])
-    for row in rows:
-        stock = lookup(row["symbol"])
-        holding.append(stock)
-    if request.method == "POST":
-        holding = []
-        quote = lookup(request.form.get("data['symbol']"))
-        symbol = request.form.get("data['symbol']")
-        shares = request.form.get("shares")*(-1)
-        row = db.execute("SELECT cash FROM users WHERE id=:id",id=session["user_id"])
-        budget = row[0]["cash"]
-        price = quote['price']
-        total = float(shares)*(-1)*price
-        currentTotal =  budget + total
-        # db.execute("INSERT INTO purchases (Symbol, Name, Shares, Price, TOTAL) VALUES(?, ?, ?, ?, ?)", symbol, name, shares, price, total)
-        db.execute("UPDATE users SET cash=:currentTotal WHERE id=:id",currentTotal=currentTotal,id=session["user_id"])
-        db.execute("UPDATE purchases SET shares=:shares WHERE id=:id",id=session["user_id"],shares=shares)
-        # db.execute("INSERT INTO purchases(user_id,symbol,shares,price) VALUES(:user_id, :symbol, :shares, :price)",user_id=session["user_id"],symbol=symbol,shares=shares,price=price)
-        flash("sold successfully!")
-        return render_template("index.html",shares=shares, currentTotal=currentTotal,holding=holding)
-    
-    return render_template("sell.html",holding=holding)
+    return render_template("sell.html",symbols=[row['symbol'] for row in rows])
 
 
 def errorhandler(e):
